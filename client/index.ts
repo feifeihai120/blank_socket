@@ -36,7 +36,7 @@ var on = {
     //--------服务器发送事件-----
 
     serverEmitClientList(d: blank.serverEmitClientListData) {
-        console.log("当前房间内客户端列表：", d);
+        console.log("客户端列表：", d);
     },
     serverEmitStartShare(d: blank.serverEmitStartShareData) {
         console.log("开始共享！", "共享者为：", d);

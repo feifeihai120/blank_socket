@@ -29,7 +29,7 @@ client.on('close', function () {
 var on = {
     //--------服务器发送事件-----
     serverEmitClientList: function (d) {
-        console.log("当前房间内客户端列表：", d);
+        console.log("客户端列表：", d);
     },
     serverEmitStartShare: function (d) {
         console.log("开始共享！", "共享者为：", d);
