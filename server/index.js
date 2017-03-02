@@ -232,13 +232,17 @@ function serverOnConnection(client) {
             if (socket instanceof Array) {
                 socket.forEach(function (s) {
                     // s.emit(event, d, ack);
-                    s.write(JSON.stringify(createBufferJSON(event, d)));
+                    var sendData = JSON.stringify(createBufferJSON(event, d));
+                    sendData += "\0";
+                    s.write(sendData);
                     logSendTo(s);
                 });
             }
             else {
                 // socket.emit(event, d, ack);
-                socket.write(JSON.stringify(createBufferJSON(event, d)));
+                var sendData = JSON.stringify(createBufferJSON(event, d));
+                sendData += "\0";
+                socket.write(sendData);
                 logSendTo(socket);
             }
             function logSendTo(s) {
@@ -282,7 +286,7 @@ function log(title) {
             args[i] = s.substring(0, max / 2) + "...<" + s.length + ">..." + s.substring(s.length - max / 2, s.length);
         }
     });
-    // return console.log.apply(console, [">>[" + title + "]"].concat(args));
+    return console.log.apply(console, [">>[" + title + "]"].concat(args));
 }
 /**
  * 统一错误日志输出
@@ -307,7 +311,9 @@ function successACK(client, ackName, ackData) {
     if (ackData === void 0) { ackData = null; }
     // if (ackData == null) {
     // return ack(createServerBaseSuccess());
-    client.write(JSON.stringify(createBufferJSON(ackName + "ACK", createServerBaseSuccess(ackData))));
+    var sendData = JSON.stringify(createBufferJSON(ackName + "ACK", createServerBaseSuccess(ackData)));
+    sendData += "\0";
+    client.write(sendData);
     // } else {
     //     return client(createServerBaseSuccess(ackData));
     // }
@@ -323,7 +329,9 @@ function failACK(client, ackName, message, code) {
     if (message === void 0) { message = ""; }
     if (code === void 0) { code = -1; }
     // return ack(createServerBaseFail(message, code));
-    client.write(JSON.stringify(createBufferJSON(ackName + "ACK", createServerBaseFail(message, code))));
+    var sendData = JSON.stringify(createBufferJSON(ackName + "ACK", createServerBaseFail(message, code)));
+    sendData += "\0";
+    client.write(sendData);
 }
 /**
  * 创建一个服务器返回数据对象

@@ -16,7 +16,7 @@ var receiveCache = "";
 // 为客户端添加“data”事件处理函数
 // data是服务器发回的数据
 client.on('data', function (buffer) {
-    var dataString;
+    var dataString:string;
     if (buffer instanceof Buffer) {
         dataString = buffer.toString();
     } else {
@@ -38,8 +38,8 @@ client.on('data', function (buffer) {
         return;
     }
 
-
     var data: blank.BufferJSON = JSON.parse(dataString);
+    
     var onFn: ((d: any, ack: Function) => void) = on[data.eventName];
     if (typeof onFn != "function") return;
     onFn.apply(client, [data.eventData]);
