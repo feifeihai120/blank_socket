@@ -15,6 +15,8 @@ var noop = function () { };
 server.on("connection", serverOnConnection);
 function serverOnConnection(client) {
     log("ServerConnection", "一个用户连接成功 " + client.remoteAddress + ":" + client.remotePort);
+    /** 接收缓冲区 */
+    var receiveCache = "";
     var clientOn = {
         /**
          * 客户端断开连接
@@ -39,6 +41,17 @@ function serverOnConnection(client) {
             else {
                 dataString = buffer;
             }
+            //将每次接受到的数据都存入缓冲区
+            receiveCache += dataString;
+            //判断结束符号是否为\0符号。
+            // 如果是表示全部接受完毕，从缓冲区中取出所有数据并删除最后\0，开始解析JSON。不是则不执行操作
+            if (dataString[dataString.length - 1] == "\0") {
+                dataString = receiveCache.substring(0, receiveCache.length - 1);
+                receiveCache = "";
+            }
+            else {
+                return;
+            }
             // console.log("服务器已接收到：" + dataString);
             //将客户端发送的字符串解析为事件模型
             var data = JSON.parse(dataString);
@@ -54,8 +67,9 @@ function serverOnConnection(client) {
         },
         // drain: function () {
         // },
-        end: function () {
-        },
+        // end: function () {
+        //     console.log("onEnd",arguments);
+        // },
         // error: function (err: Error) {
         // },
         // lookup: function (err: Error, address: string, family: string | number, host: string) {
@@ -260,7 +274,15 @@ function log(title) {
     for (var _i = 1; _i < arguments.length; _i++) {
         args[_i - 1] = arguments[_i];
     }
-    return console.log.apply(console, [">>[" + title + "]"].concat(args));
+    /** 最长日志数据长度 */
+    var max = 200;
+    args.forEach(function (a, i) {
+        var s = String(a);
+        if (s.length > max) {
+            args[i] = s.substring(0, max / 2) + "...<" + s.length + ">..." + s.substring(s.length - max / 2, s.length);
+        }
+    });
+    // return console.log.apply(console, [">>[" + title + "]"].concat(args));
 }
 /**
  * 统一错误日志输出

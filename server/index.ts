@@ -12,6 +12,7 @@ const PORT = 3001;
 const server: net.Server = net.createServer();
 server.listen(PORT, HOST);
 
+
 /** 所有已登录的客户端数组 */
 const clientList: blank.client[] = [];
 
@@ -23,6 +24,8 @@ server.on("connection", serverOnConnection);
 function serverOnConnection(client: blank.client) {
     log("ServerConnection", "一个用户连接成功 " + client.remoteAddress + ":" + client.remotePort);
 
+    /** 接收缓冲区 */
+    var receiveCache = "";
     var clientOn = {
         /**
          * 客户端断开连接
@@ -42,12 +45,25 @@ function serverOnConnection(client: blank.client) {
 
         // },
         data: function (buffer: Buffer) {
-            var dataString;
+            var dataString: string;
             if (buffer instanceof Buffer) {
                 dataString = buffer.toString();
             } else {
                 dataString = buffer;
             }
+
+            //将每次接受到的数据都存入缓冲区
+            receiveCache += dataString;
+
+            //判断结束符号是否为\0符号。
+            // 如果是表示全部接受完毕，从缓冲区中取出所有数据并删除最后\0，开始解析JSON。不是则不执行操作
+            if (dataString[dataString.length - 1] == "\0") {
+                dataString = receiveCache.substring(0, receiveCache.length - 1);
+                receiveCache = "";
+            } else {
+                return;
+            }
+
             // console.log("服务器已接收到：" + dataString);
 
             //将客户端发送的字符串解析为事件模型
@@ -66,9 +82,9 @@ function serverOnConnection(client: blank.client) {
         // drain: function () {
 
         // },
-        end: function () {
-
-        },
+        // end: function () {
+        //     console.log("onEnd",arguments);
+        // },
         // error: function (err: Error) {
 
         // },
@@ -278,7 +294,17 @@ server.on("listening", function () {
  * @returns
  */
 function log(title: string, ...args: any[]) {
-    return console.log.apply(console, [">>[" + title + "]"].concat(args));
+
+    /** 最长日志数据长度 */
+    var max = 200;
+    args.forEach((a, i) => {
+        var s = String(a);
+        if (s.length > max) {
+            args[i] = s.substring(0, max / 2) + "...<" + s.length + ">..." + s.substring(s.length - max / 2, s.length);
+        }
+    });
+
+    // return console.log.apply(console, [">>[" + title + "]"].concat(args));
 }
 /**
  * 统一错误日志输出

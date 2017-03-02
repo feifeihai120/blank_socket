@@ -10,6 +10,9 @@ const PORT = 3001;
 var client: blank.client = <blank.client>new net.Socket();
 
 
+/** 接收缓冲区 */
+var receiveCache = "";
+
 // 为客户端添加“data”事件处理函数
 // data是服务器发回的数据
 client.on('data', function (buffer) {
@@ -19,7 +22,23 @@ client.on('data', function (buffer) {
     } else {
         dataString = buffer;
     }
-    log('Receive' + dataString);
+
+    log('Receive', dataString);
+
+
+    //将每次接受到的数据都存入缓冲区
+    receiveCache += dataString;
+
+    //判断结束符号是否为\0符号。
+    // 如果是表示全部接受完毕，从缓冲区中取出所有数据并删除最后\0，开始解析JSON。不是则不执行操作
+    if (dataString[dataString.length - 1] == "\0") {
+        dataString = receiveCache.substring(0, receiveCache.length - 1);
+        receiveCache = "";
+    } else {
+        return;
+    }
+
+
     var data: blank.BufferJSON = JSON.parse(dataString);
     var onFn: ((d: any, ack: Function) => void) = on[data.eventName];
     if (typeof onFn != "function") return;
@@ -79,6 +98,7 @@ var on = {
 var emit = {
     _send(name: string, d: any) {
         var sendData = JSON.stringify(createBufferJSON(name, d));
+        sendData += "\0";
         log("Send", sendData);
         client.write(sendData);
     },
@@ -152,7 +172,16 @@ var action = {
  * @returns
  */
 function log(title: string, ...args: any[]) {
-    // return console.log.apply(console, ["[" + title + "]"].concat(args));
+    /** 最长日志数据长度 */
+    var max = 200;
+    args.forEach((a, i) => {
+        var s = String(a);
+        if (s.length > max) {
+            args[i] = s.substring(0, max / 2) + "...<" + s.length + ">..." + s.substring(s.length - max / 2, s.length);
+        }
+    });
+
+    return console.log.apply(console, ["[" + title + "]"].concat(args));
 }
 
 
@@ -170,6 +199,13 @@ function createBufferJSON(name: string, data: any): blank.BufferJSON {
     }
 }
 
+function getString(length: number = 1024) {
+    var str = "";
+    for (var i = 0; i < length; i++) {
+        str += parseInt(<any>(Math.random() * 10));
+    }
+    return str;
+}
 
 
 
