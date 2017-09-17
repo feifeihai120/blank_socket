@@ -16,7 +16,7 @@ var receiveCache = "";
 // 为客户端添加“data”事件处理函数
 // data是服务器发回的数据
 client.on('data', function (buffer) {
-    var dataString:string;
+    var dataString: string;
     if (buffer instanceof Buffer) {
         dataString = buffer.toString();
     } else {
@@ -29,20 +29,30 @@ client.on('data', function (buffer) {
     //将每次接受到的数据都存入缓冲区
     receiveCache += dataString;
 
-    //判断结束符号是否为\0符号。
+    // 判断结束符号是否为\0符号。
     // 如果是表示全部接受完毕，从缓冲区中取出所有数据并删除最后\0，开始解析JSON。不是则不执行操作
     if (dataString[dataString.length - 1] == "\0") {
+        // 删除末尾的\0字符
         dataString = receiveCache.substring(0, receiveCache.length - 1);
         receiveCache = "";
     } else {
         return;
     }
 
-    var data: blank.BufferJSON = JSON.parse(dataString);
-    
-    var onFn: ((d: any, ack: Function) => void) = on[data.eventName];
-    if (typeof onFn != "function") return;
-    onFn.apply(client, [data.eventData]);
+    if (dataString.indexOf("\0") >= 0) {
+        dataString.split("\0").forEach(str => {
+            actionData(str);
+        });
+    } else {
+        actionData(dataString);
+    }
+    function actionData(dataStr: string) {
+        var data: blank.BufferJSON = JSON.parse(dataStr);
+
+        var onFn: ((d: any, ack: Function) => void) = on[data.eventName];
+        if (typeof onFn != "function") return;
+        onFn.apply(client, [data.eventData]);
+    }
 });
 
 // 为客户端添加“close”事件处理函数
@@ -66,6 +76,9 @@ var on = {
     serverEmitEndShare(d: blank.serverEmitEndShareData) {
         console.log("结束共享！", "共享者为：", d);
     },
+    serverEmitShareState(d: blank.serverEmitShareStateData) {
+        console.log("当前共享状态：", d.state == 0 ? "未开始" : d.state == 1 ? "正在共享" : "未知");
+    },
 
     //--------客户端发送的事件的ACK回调------
     clientEmitLoginACK(d: blank.serverBase<blank.clientEmitLoginACK>) {
@@ -88,7 +101,7 @@ var on = {
         }
     },
     clientEmitCancelMasterACK(d: blank.serverBase<blank.clientEmitCancelMasterACK>) {
-
+        console.log("取消主持人成功！");
     },
     clientEmitGetClientListACK(d: blank.serverBase<blank.clientEmitGetClientListACK>) {
 
@@ -135,9 +148,10 @@ var action = {
      * 发送共享数据
      * 
      * @param {*} d 共享数据
+     * @param {string[]} receiverIds 接收者的id数组，默认空数组即发给所有人，可以指定发送给谁
      */
-    sendShare(d: any) {
-        emit.clientEmitSendShare({ data: d });
+    sendShare(d: any, receiverIds: string[] = []) {
+        emit.clientEmitSendShare({ data: d, receiverIds: receiverIds });
     },
     /**
      * 取消成为主持人

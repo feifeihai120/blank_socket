@@ -35,14 +35,6 @@ declare module "blank" {
         roomId: string;
     }
 
-    // interface client {
-    //     emit(event: "clientEmitLogin", data: clientEmitLoginData, ack: (d: clientEmitLoginACK) => void): boolean;
-    //     emit(event: "clientEmitSetMaster", data: clientEmitSetMasterData, ack: (d: clientEmitSetMasterACK) => void): boolean;
-    //     emit(event: "clientEmitSendShare", data: clientEmitSendShareData, ack: (d: clientEmitSendShareACK) => void): boolean;
-    //     emit(event: "clientEmitCancelMaster", data: clientEmitCancelMasterData, ack: (d: clientEmitCancelMasterACK) => void): boolean;
-    //     emit(event: string, ...args: any[]): boolean;
-    // }
-
     /**
      * 客户端发送的实体，转换为JSON字符串后发送
      * 
@@ -93,7 +85,7 @@ declare module "blank" {
         msg?: string;
     }
 
-    // ---------服务器监听消息-----------
+    // ---------服务器监听的消息-----------
 
     /**
      * 客户端登录
@@ -152,6 +144,13 @@ declare module "blank" {
          * @type {*}
          */
         data: any;
+
+        /**
+         * 指定要给谁发送分享数据，为接收者的id字符串数组，传空数组则为向所有人发送
+         * 
+         * @type {string[]}
+         */
+        receiverIds: string[];
     }
 
     interface clientEmitSendShareACK {
@@ -171,7 +170,6 @@ declare module "blank" {
 
     }
 
-
     /**
      * 客户端主动获取服务器当前房间内的客户端列表
      * 
@@ -182,16 +180,16 @@ declare module "blank" {
          * 要获取的指定客户端列表的房间ID，如果不传则获取当前所有在线的客户端列表
          * 
          * @type {string}
-         * @memberOf clientEmitGetClientListData
          */
-        roomId?:string;
+        roomId?: string;
     }
 
     interface clientEmitGetClientListACK {
 
     }
 
-    // ---------服务器监听消息-----------
+
+    // ---------服务器发送的消息-----------
 
     /**
      * 服务器向客户端发送当前客户端列表
@@ -272,6 +270,15 @@ declare module "blank" {
          * @type {*}
          */
         data: any;
+
+        /**
+         * 接收者的id字符串数组，为空数组则为所有人。
+         * 客户端可根据此字段来判断当前接收到的数据是向所有人发送的，还是指定向自己发送的。
+         * 若此字段为空数组则为全局发送的数据，若不为空，则为专门向你发送的。
+         * 
+         * @type {string[]}
+         */
+        receiverIds: string[];
     }
 
     interface serverEmitSendShareACK {
@@ -301,6 +308,24 @@ declare module "blank" {
     }
 
     interface serverEmitEndShareACK {
+
+    }
+
+    /**
+     * 服务器向所有新连接进入的客户端发送当前的共享状态，是否正在分享
+     * 
+     * @interface serverEmitShareStateData
+     */
+    interface serverEmitShareStateData {
+        /**
+         * 当前服务器的分析状态, 0:未开始分享, 1:正在分享
+         * 
+         * @type {serverShareStateEnum}
+         */
+        state: 1 | 0;
+    }
+
+    interface serverEmitShareStateACK {
 
     }
 

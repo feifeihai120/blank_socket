@@ -98,24 +98,44 @@ function serverOnConnection(client: blank.client) {
 
         //--------自定义事件-----------
         /**
-         * 客户端手机登录
+         * 客户端登录
          * 
          * @param {any} d
          */
         clientEmitLogin(d: blank.clientEmitLoginData, ack: (ackData: blank.serverBase<blank.clientEmitLoginACK>) => void): void {
+            if (d.id == undefined || d.name == undefined || d.roomId == undefined) {
+                return failACK(client, "clientEmitLogin", `登录失败，需要id,name,roomId`);
+            }
+
             client.id = d.id;
             client.name = d.name;
             client.roomId = d.roomId;
             client.isMaster = false;
 
-            if (d.id == undefined || d.name == undefined || d.roomId == undefined) {
-                return failACK(client, "clientEmitLogin", `登录失败，需要id,name,roomId`);
-            }
-
             if (getClient(d.id, d.roomId) == undefined) {
                 clientList.push(client);
                 var clients = getClientsByRoom(client.roomId);
+                // 登录后，向所有人发送当前所有在线客户端列表
                 emit.serverEmitClientList(clients, clients.map(c => createClientListItem(c)));
+
+                // 向当前登录人发送当前共享状态，是否正在共享
+                var shareState: serverShareStateEnum = null;
+                var master = getMasterByRoom(client.roomId);
+                if (master == undefined) {
+                    shareState = serverShareStateEnum.notShared;
+                } else {
+                    shareState = serverShareStateEnum.sharing;
+                }
+                emit.serverEmitShareState(client, { state: shareState });
+
+                // 若当前正在共享，向当前登录人发送开始共享信息，主持人信息
+                if (shareState == serverShareStateEnum.sharing) {
+                    emit.serverEmitStartShare(client, {
+                        masterId: master.id,
+                        masterName: master.name
+                    });
+                }
+
                 return successACK(client, "clientEmitLogin");
             } else {
                 return failACK(client, "clientEmitLogin", `登录失败,在房间<${d.roomId}>中，客户端ID<${d.id}>已存在`);
@@ -139,7 +159,11 @@ function serverOnConnection(client: blank.client) {
                 });
                 return successACK(client, "clientEmitSetMaster");
             } else {
-                return failACK(client, "clientEmitSetMaster", `设定主持人失败,在房间<${client.roomId}>中，客户端ID<${master.id}>为主持人`)
+                if (master.id == client.id) {
+                    return failACK(client, "clientEmitSetMaster", `设定主持人失败,您已经是主持人`);
+                } else {
+                    return failACK(client, "clientEmitSetMaster", `设定主持人失败,在房间<${client.roomId}>中，客户端ID<${master.id}>为主持人`);
+                }
             }
         },
 
@@ -151,11 +175,28 @@ function serverOnConnection(client: blank.client) {
          */
         clientEmitSendShare(d: blank.clientEmitSendShareData, ack: (ackData: blank.serverBase<blank.clientEmitSendShareACK>) => void): void {
             var clients: blank.client[] = getClientsByRoom(client.roomId);
+            /** 要接收共享数据的用户id数组，空数组则发送给所有人 */
+            var receiverIds: string[] = [];
+            if (d.receiverIds instanceof Array) {
+                receiverIds = d.receiverIds;
+            } else {
+                receiverIds = []
+            }
+            // 如果接收者数组不为空，则过滤接收者
+            if (receiverIds.length > 0) {
+                clients = clients.filter(c => {
+                    return receiverIds.indexOf(c.id) >= 0;
+                });
+                if (clients.length == 0) {
+                    return failACK(client, "clientEmitSendShare", "发送共享数据失败，指定的所有接收者均不存在");
+                }
+            }
             if (!client.isMaster) {
                 return failACK(client, "clientEmitSendShare", "发送共享数据失败，您当前不是主持人，不能发送共享数据");
             }
             emit.serverEmitSendShare(clients, {
-                data: d.data
+                data: d.data,
+                receiverIds: receiverIds
             });
             return successACK(client, "clientEmitSendShare");
         },
@@ -195,7 +236,25 @@ function serverOnConnection(client: blank.client) {
             }
             emit.serverEmitClientList(client, clients.map(c => createClientListItem(c)));
             return successACK(client, "clientEmitGetClientList");
-        }
+        },
+
+        // /**
+        //  * 客户端加入当前正在进行的共享
+        //  * 
+        //  * @param {blank.clientEmitJoinShareData} d 
+        //  * @param {(ackData: blank.serverBase<blank.clientEmitJoinShareACK>) => void} ack 
+        //  * @returns {void} 
+        //  */
+        // clientEmitJoinShare(d: blank.clientEmitJoinShareData, ack: (ackData: blank.serverBase<blank.clientEmitJoinShareACK>) => void): void {
+        //     // var clients: blank.client[];
+        //     // if (d.roomId == undefined) {
+        //     //     clients = clientList;
+        //     // } else {
+        //     //     clients = getClientsByRoom(d.roomId);
+        //     // }
+        //     // emit.serverEmitClientList(client, clients.map(c => createClientListItem(c)));
+        //     // return successACK(client, "clientEmitGetClientList");
+        // }
     }
 
     var emit = {
@@ -219,6 +278,11 @@ function serverOnConnection(client: blank.client) {
          * 服务器向所有非主持人发送，结束共享
          */
         serverEmitEndShare(socket: blank.client | blank.client[], d: blank.serverEmitEndShareData, ack: (ackData?: blank.serverBase<blank.serverEmitEndShareACK>) => void = noop) { },
+
+        /**
+         * 服务器向所有新连接进入的客户端发送当前的共享状态
+         */
+        serverEmitShareState(socket: blank.client | blank.client[], d: blank.serverEmitShareStateData, ack: (ackData?: blank.serverBase<blank.serverEmitShareStateACK>) => void = noop) { },
     }
 
     //循环创建监听
@@ -437,4 +501,21 @@ function createBufferJSON(name: string, data: any): blank.BufferJSON {
         eventName: name,
         eventData: data,
     }
+}
+
+/**
+ * 当前服务器的共享状态
+ * 
+ * @interface serverShareStateEnum
+ */
+enum serverShareStateEnum {
+    /**
+     * 正在分享
+     */
+    sharing = 1,
+
+    /**
+     * 未开始分享
+     */
+    notShared = 0
 }

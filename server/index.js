@@ -78,22 +78,40 @@ function serverOnConnection(client) {
         // },
         //--------自定义事件-----------
         /**
-         * 客户端手机登录
+         * 客户端登录
          *
          * @param {any} d
          */
         clientEmitLogin: function (d, ack) {
+            if (d.id == undefined || d.name == undefined || d.roomId == undefined) {
+                return failACK(client, "clientEmitLogin", "\u767B\u5F55\u5931\u8D25\uFF0C\u9700\u8981id,name,roomId");
+            }
             client.id = d.id;
             client.name = d.name;
             client.roomId = d.roomId;
             client.isMaster = false;
-            if (d.id == undefined || d.name == undefined || d.roomId == undefined) {
-                return failACK(client, "clientEmitLogin", "\u767B\u5F55\u5931\u8D25\uFF0C\u9700\u8981id,name,roomId");
-            }
             if (getClient(d.id, d.roomId) == undefined) {
                 clientList.push(client);
                 var clients = getClientsByRoom(client.roomId);
+                // 登录后，向所有人发送当前所有在线客户端列表
                 emit.serverEmitClientList(clients, clients.map(function (c) { return createClientListItem(c); }));
+                // 向当前登录人发送当前共享状态，是否正在共享
+                var shareState = null;
+                var master = getMasterByRoom(client.roomId);
+                if (master == undefined) {
+                    shareState = serverShareStateEnum.notShared;
+                }
+                else {
+                    shareState = serverShareStateEnum.sharing;
+                }
+                emit.serverEmitShareState(client, { state: shareState });
+                // 若当前正在共享，向当前登录人发送开始共享信息，主持人信息
+                if (shareState == serverShareStateEnum.sharing) {
+                    emit.serverEmitStartShare(client, {
+                        masterId: master.id,
+                        masterName: master.name
+                    });
+                }
                 return successACK(client, "clientEmitLogin");
             }
             else {
@@ -118,7 +136,12 @@ function serverOnConnection(client) {
                 return successACK(client, "clientEmitSetMaster");
             }
             else {
-                return failACK(client, "clientEmitSetMaster", "\u8BBE\u5B9A\u4E3B\u6301\u4EBA\u5931\u8D25,\u5728\u623F\u95F4<" + client.roomId + ">\u4E2D\uFF0C\u5BA2\u6237\u7AEFID<" + master.id + ">\u4E3A\u4E3B\u6301\u4EBA");
+                if (master.id == client.id) {
+                    return failACK(client, "clientEmitSetMaster", "\u8BBE\u5B9A\u4E3B\u6301\u4EBA\u5931\u8D25,\u60A8\u5DF2\u7ECF\u662F\u4E3B\u6301\u4EBA");
+                }
+                else {
+                    return failACK(client, "clientEmitSetMaster", "\u8BBE\u5B9A\u4E3B\u6301\u4EBA\u5931\u8D25,\u5728\u623F\u95F4<" + client.roomId + ">\u4E2D\uFF0C\u5BA2\u6237\u7AEFID<" + master.id + ">\u4E3A\u4E3B\u6301\u4EBA");
+                }
             }
         },
         /**
@@ -129,11 +152,29 @@ function serverOnConnection(client) {
          */
         clientEmitSendShare: function (d, ack) {
             var clients = getClientsByRoom(client.roomId);
+            /** 要接收共享数据的用户id数组，空数组则发送给所有人 */
+            var receiverIds = [];
+            if (d.receiverIds instanceof Array) {
+                receiverIds = d.receiverIds;
+            }
+            else {
+                receiverIds = [];
+            }
+            // 如果接收者数组不为空，则过滤接收者
+            if (receiverIds.length > 0) {
+                clients = clients.filter(function (c) {
+                    return receiverIds.indexOf(c.id) >= 0;
+                });
+                if (clients.length == 0) {
+                    return failACK(client, "clientEmitSendShare", "发送共享数据失败，指定的所有接收者均不存在");
+                }
+            }
             if (!client.isMaster) {
                 return failACK(client, "clientEmitSendShare", "发送共享数据失败，您当前不是主持人，不能发送共享数据");
             }
             emit.serverEmitSendShare(clients, {
-                data: d.data
+                data: d.data,
+                receiverIds: receiverIds
             });
             return successACK(client, "clientEmitSendShare");
         },
@@ -199,6 +240,12 @@ function serverOnConnection(client) {
          * 服务器向所有非主持人发送，结束共享
          */
         serverEmitEndShare: function (socket, d, ack) {
+            if (ack === void 0) { ack = noop; }
+        },
+        /**
+         * 服务器向所有新连接进入的客户端发送当前的共享状态
+         */
+        serverEmitShareState: function (socket, d, ack) {
             if (ack === void 0) { ack = noop; }
         }
     };
@@ -417,4 +464,20 @@ function createBufferJSON(name, data) {
         eventData: data
     };
 }
+/**
+ * 当前服务器的共享状态
+ *
+ * @interface serverShareStateEnum
+ */
+var serverShareStateEnum;
+(function (serverShareStateEnum) {
+    /**
+     * 正在分享
+     */
+    serverShareStateEnum[serverShareStateEnum["sharing"] = 1] = "sharing";
+    /**
+     * 未开始分享
+     */
+    serverShareStateEnum[serverShareStateEnum["notShared"] = 0] = "notShared";
+})(serverShareStateEnum || (serverShareStateEnum = {}));
 //# sourceMappingURL=index.js.map
